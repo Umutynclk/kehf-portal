@@ -7,7 +7,7 @@ export interface AdminUser {
   role: "admin";
 }
 
-const ADMIN_SECRET = process.env.ADMIN_SESSION_SECRET || "kehf_master_secret_key_2026_secure";
+const ADMIN_SECRET = process.env.ADMIN_SESSION_SECRET || "";
 const SESSION_STORAGE_KEY = "kehf_admin_session";
 const TOKEN_STORAGE_KEY = "kehf_admin_token";
 
@@ -56,7 +56,7 @@ export function verifyAdminToken(token: string | null | undefined): boolean {
 export async function signIn(email: string, password: string): Promise<AdminUser> {
   const adminEmail = (email || "").trim().toLowerCase();
   const validEmails = ["admin@kehf.com", "admin", "kehf"];
-  
+
   // Accept admin credentials (or configured ADMIN_PASSWORD)
   const isValidEmail = validEmails.some((e) => adminEmail.includes(e)) || adminEmail.length > 3;
   const isDefaultPassword = password === "admin123" || password === "kehf2026" || password === "admin";
