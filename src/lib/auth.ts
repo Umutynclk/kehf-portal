@@ -2,7 +2,11 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
 } from "firebase/auth";
-import { getFirebaseAuth, isFirebaseClientConfigured } from "./firebase/client";
+import {
+  ensureFirebaseAuth,
+  getFirebaseAuth,
+  isFirebaseClientConfigured,
+} from "./firebase/client";
 
 export interface AdminUser {
   uid: string;
@@ -47,13 +51,7 @@ export async function signIn(
     throw new Error("E-posta ve şifre zorunludur.");
   }
 
-  if (!isFirebaseClientConfigured()) {
-    throw new Error(
-      "Firebase istemci yapılandırması eksik (NEXT_PUBLIC_FIREBASE_API_KEY)."
-    );
-  }
-
-  const auth = getFirebaseAuth();
+  const auth = await ensureFirebaseAuth();
 
   let idToken: string;
   try {

@@ -1,5 +1,5 @@
 # Firebase App Hosting yapılandırması — KEHF GROUP (kehf-d1b3a)
-# Gizli anahtarlar Google Cloud Secret Manager üzerinden sağlanır.
+# Gizli değerler Google Cloud Secret Manager üzerinden sağlanır.
 # Komut: firebase apphosting:secrets:set <SECRET_ADI>
 
 runConfig:
@@ -10,7 +10,7 @@ runConfig:
   memoryMiB: 512
 
 env:
-  # Firebase Web SDK (istemci yapılandırması)
+  # Firebase Web SDK (Next.js istemci bundle'ı için BUILD + RUNTIME gerekli)
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
     secret: NEXT_PUBLIC_FIREBASE_API_KEY
     availability:

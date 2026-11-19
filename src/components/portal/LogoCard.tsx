@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/lib/logos";
 import { logLogoClick } from "@/lib/analytics";
@@ -11,7 +11,7 @@ interface LogoCardProps {
   animationDelay?: number;
 }
 
-export default function LogoCard({
+function LogoCard({
   logo,
   isFeatured = false,
   animationDelay = 0,
@@ -43,6 +43,10 @@ export default function LogoCard({
     animationDelay: `${animationDelay}ms`,
   };
 
+  const accessibleName = logo.subtitle
+    ? `${logo.title} — ${logo.subtitle}`
+    : logo.title || "KEHF Group";
+
   // ────────────────────────────────────────────────────────
   // 1. ANA BÜYÜK LOGO (KEHF GROUP HERO LOGO)
   // ────────────────────────────────────────────────────────
@@ -53,6 +57,7 @@ export default function LogoCard({
           href: logo.targetUrl,
           target: logo.openInNewTab ? "_blank" : "_self",
           rel: "noopener noreferrer",
+          "aria-label": `${accessibleName} web sitesini ziyaret et`,
         }
       : {};
 
@@ -61,7 +66,7 @@ export default function LogoCard({
         {...linkProps}
         onClick={handleClick}
         style={animStyle}
-        className={`group relative flex flex-col items-center justify-center w-full max-w-2xl px-6 py-4 transition-all duration-500 focus:outline-none animate-hero-pop ${
+        className={`group relative flex flex-col items-center justify-center w-full max-w-2xl px-6 py-4 rounded-2xl transition-all duration-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 animate-hero-pop ${
           hasTargetUrl ? "cursor-pointer" : "cursor-default select-none"
         }`}
       >
@@ -74,7 +79,7 @@ export default function LogoCard({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={logo.imageUrl}
-              alt={logo.title || "KEHF GROUP"}
+              alt={`${accessibleName} logosu`}
               onError={() => setImageError(true)}
               className="max-w-full max-h-full object-contain filter drop-shadow-[0_15px_35px_rgba(0,0,0,0.9)] transition-transform duration-500 group-hover:scale-105"
               loading="eager"
@@ -105,6 +110,7 @@ export default function LogoCard({
         href: logo.targetUrl,
         target: logo.openInNewTab ? "_blank" : "_self",
         rel: "noopener noreferrer",
+        "aria-label": `${accessibleName} web sitesini ziyaret et`,
       }
     : {};
 
@@ -113,7 +119,7 @@ export default function LogoCard({
       {...linkProps}
       onClick={handleClick}
       style={animStyle}
-      className={`group relative flex flex-col items-center justify-center w-full h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] p-3 sm:p-4 rounded-2xl hover:bg-white/[0.02] transition-all duration-300 focus:outline-none animate-logo-pop ${
+      className={`group relative flex flex-col items-center justify-center w-full h-full min-h-[140px] sm:min-h-[160px] md:min-h-[180px] p-3 sm:p-4 rounded-2xl hover:bg-white/[0.02] transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 animate-logo-pop ${
         hasTargetUrl
           ? "cursor-pointer hover:scale-105"
           : "cursor-default select-none"
@@ -128,7 +134,7 @@ export default function LogoCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={logo.imageUrl}
-            alt={logo.title}
+            alt={`${accessibleName} logosu`}
             onError={() => setImageError(true)}
             className="max-w-full max-h-full object-contain filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] transition-all duration-300 group-hover:drop-shadow-[0_12px_24px_rgba(255,255,255,0.12)]"
             loading="lazy"
@@ -156,4 +162,6 @@ export default function LogoCard({
     </CardElement>
   );
 }
+
+export default memo(LogoCard);
 

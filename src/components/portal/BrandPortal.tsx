@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Logo, subscribeToLogos, DEFAULT_LOGOS } from "@/lib/logos";
 import {
@@ -50,32 +50,38 @@ export default function BrandPortal({
     return unsub;
   }, []);
 
-  // 1 Featured Logo (KEHF GROUP) & Remaining Brand Logos
-  const featuredLogo =
-    logos.find((l) => l.isFeatured) || (logos.length > 0 ? logos[0] : null);
+  // 1 Featured Logo (KEHF GROUP) & Remaining Brand Logos (memoized)
+  const { featuredLogo, secondaryLogos, topRowLogos, bottomRowLogos } = useMemo(() => {
+    const featured =
+      logos.find((l) => l.isFeatured) || (logos.length > 0 ? logos[0] : null);
+    const secondary = featured
+      ? logos.filter((l) => l.id !== featured.id)
+      : logos.slice(1);
 
-  const secondaryLogos = featuredLogo
-    ? logos.filter((l) => l.id !== featuredLogo.id)
-    : logos.slice(1);
+    let top: Logo[] = [];
+    let bottom: Logo[] = [];
 
-  // Layout splitting:
-  // Default matching image: 3 logos in Top Row + remaining in Bottom Row
-  let topRowLogos: Logo[] = [];
-  let bottomRowLogos: Logo[] = [];
+    if (secondary.length >= 7) {
+      top = secondary.slice(0, 3);
+      bottom = secondary.slice(3);
+    } else if (secondary.length === 6) {
+      top = secondary.slice(0, 3);
+      bottom = secondary.slice(3, 6);
+    } else if (secondary.length === 5) {
+      top = secondary.slice(0, 3);
+      bottom = secondary.slice(3, 5);
+    } else {
+      top = secondary;
+      bottom = [];
+    }
 
-  if (secondaryLogos.length >= 7) {
-    topRowLogos = secondaryLogos.slice(0, 3);
-    bottomRowLogos = secondaryLogos.slice(3);
-  } else if (secondaryLogos.length === 6) {
-    topRowLogos = secondaryLogos.slice(0, 3);
-    bottomRowLogos = secondaryLogos.slice(3, 6);
-  } else if (secondaryLogos.length === 5) {
-    topRowLogos = secondaryLogos.slice(0, 3);
-    bottomRowLogos = secondaryLogos.slice(3, 5);
-  } else {
-    topRowLogos = secondaryLogos;
-    bottomRowLogos = [];
-  }
+    return {
+      featuredLogo: featured,
+      secondaryLogos: secondary,
+      topRowLogos: top,
+      bottomRowLogos: bottom,
+    };
+  }, [logos]);
 
   // Animation timing calculation
   const animMultiplier =
@@ -94,7 +100,10 @@ export default function BrandPortal({
       : BASE_DELAY + secondaryLogos.length * STAGGER_INTERVAL + 100;
 
   return (
-    <div className="relative min-h-screen w-full bg-[#000000] text-white flex flex-col justify-between items-center px-4 sm:px-8 md:px-12 py-8 sm:py-14 selection:bg-amber-500/30 selection:text-white overflow-x-hidden">
+    <main className="relative flex-1 w-full bg-[#000000] text-white flex flex-col justify-between items-center px-4 sm:px-8 md:px-12 py-8 sm:py-12 selection:bg-amber-500/30 selection:text-white overflow-x-hidden">
+      <h1 className="sr-only">
+        {settings.siteTitle || "KEHF Group — Kurumsal Marka Portalı"}
+      </h1>
       {/* Optional Background Image Layer */}
       {settings.backgroundType === "image" && settings.backgroundImageUrl && (
         <>
@@ -190,10 +199,11 @@ export default function BrandPortal({
       {/* Discreet admin link dot for quick management */}
       <Link
         href="/admin/logolar"
-        title="Yönetim"
+        title="Yönetim Paneli"
+        aria-label="Yönetim Paneli"
         className="fixed bottom-4 right-4 w-3 h-3 rounded-full bg-white/[0.04] hover:bg-white/40 border border-white/[0.08] transition-all z-50 shadow-lg"
       />
-    </div>
+    </main>
   );
 }
 

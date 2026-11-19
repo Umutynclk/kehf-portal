@@ -37,14 +37,14 @@ export default function AdminLoginPage() {
 
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0a0a0f]">
+      <div className="flex-1 flex items-center justify-center bg-[#0a0a0f]">
         <div className="w-10 h-10 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-[#0a0a0f] px-4">
+    <main className="flex-1 flex items-center justify-center bg-[#0a0a0f] px-4 py-10">
       {/* Ambient glow */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-purple-600/10 rounded-full blur-[128px]" />
@@ -123,6 +123,6 @@ export default function AdminLoginPage() {
           </form>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
