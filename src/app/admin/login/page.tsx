@@ -1,18 +1,17 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { signIn } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect } from "react";
 
 export default function AdminLoginPage() {
-  const [email, setEmail] = useState("admin@kehf.com");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { user, loading: authLoading, loginAsAdmin } = useAuth();
+  const { user, loading: authLoading, refreshSession } = useAuth();
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -26,19 +25,14 @@ export default function AdminLoginPage() {
     setLoading(true);
     try {
       await signIn(email, password);
-      loginAsAdmin(email);
-      router.push("/admin/logolar");
+      await refreshSession();
+      router.replace("/admin/logolar");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Giriş yapılamadı.";
       setError(msg);
     } finally {
       setLoading(false);
     }
-  }
-
-  function handleQuickLogin() {
-    loginAsAdmin("admin@kehf.com");
-    router.push("/admin/logolar");
   }
 
   if (authLoading) {
@@ -83,6 +77,7 @@ export default function AdminLoginPage() {
                 id="email"
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-transparent transition-all"
@@ -97,6 +92,7 @@ export default function AdminLoginPage() {
                 id="password"
                 type="password"
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-transparent transition-all"
@@ -125,20 +121,6 @@ export default function AdminLoginPage() {
               )}
             </button>
           </form>
-
-          {/* Quick Admin Login Button */}
-          <div className="pt-2 border-t border-white/[0.06] text-center">
-            <button
-              type="button"
-              onClick={handleQuickLogin}
-              className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase tracking-wider border border-white/10 transition-all shadow-md cursor-pointer"
-            >
-              ⚡ Tek Tıkla Admin Paneline Giriş Yap
-            </button>
-            <p className="text-[11px] text-white/30 mt-2">
-              Hızlı yönetim için anında giriş
-            </p>
-          </div>
         </div>
       </div>
     </div>

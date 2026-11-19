@@ -20,8 +20,9 @@ export type LogoInput = Omit<Logo, "id" | "createdAt" | "updatedAt">;
 
 // ── Default Logos (matches files in public/logos/) ──
 
-export const DEFAULT_LOGOS: LogoInput[] = [
+export const DEFAULT_LOGOS: Logo[] = [
   {
+    id: "logo_kehf",
     title: "KEHF GROUP",
     subtitle: "Ana Kuruluş",
     imageUrl: "/logos/kehf.png",
@@ -32,8 +33,11 @@ export const DEFAULT_LOGOS: LogoInput[] = [
     order: 0,
     isFeatured: true,
     active: true,
+    createdAt: null,
+    updatedAt: null,
   },
   {
+    id: "logo_voks",
     title: "VOKS",
     subtitle: "Otomatik Kapı Sistemleri",
     imageUrl: "/logos/voks.png",
@@ -44,8 +48,11 @@ export const DEFAULT_LOGOS: LogoInput[] = [
     order: 1,
     isFeatured: false,
     active: true,
+    createdAt: null,
+    updatedAt: null,
   },
   {
+    id: "logo_kaliport",
     title: "KALİPORT",
     subtitle: "Endüstriyel Kapı Sistemleri",
     imageUrl: "/logos/kaliport.png",
@@ -56,8 +63,11 @@ export const DEFAULT_LOGOS: LogoInput[] = [
     order: 2,
     isFeatured: false,
     active: true,
+    createdAt: null,
+    updatedAt: null,
   },
   {
+    id: "logo_kutems",
     title: "KUTEMS",
     subtitle: "Garage & Industrial Door Components",
     imageUrl: "/logos/kutems.png",
@@ -68,8 +78,11 @@ export const DEFAULT_LOGOS: LogoInput[] = [
     order: 3,
     isFeatured: false,
     active: true,
+    createdAt: null,
+    updatedAt: null,
   },
   {
+    id: "logo_smyle",
     title: "SMYLE",
     subtitle: "Smile At Life",
     imageUrl: "/logos/smyle.png",
@@ -80,8 +93,11 @@ export const DEFAULT_LOGOS: LogoInput[] = [
     order: 4,
     isFeatured: false,
     active: true,
+    createdAt: null,
+    updatedAt: null,
   },
   {
+    id: "logo_gulumse",
     title: "GÜLÜMSE",
     subtitle: "Hayata Gülümse",
     imageUrl: "/logos/gulumse.png",
@@ -92,8 +108,11 @@ export const DEFAULT_LOGOS: LogoInput[] = [
     order: 5,
     isFeatured: false,
     active: true,
+    createdAt: null,
+    updatedAt: null,
   },
   {
+    id: "logo_sonrakam",
     title: "SONRAKAM",
     subtitle: "eee Sonrakam Ne Olur",
     imageUrl: "/logos/sonrakam.png",
@@ -104,8 +123,11 @@ export const DEFAULT_LOGOS: LogoInput[] = [
     order: 6,
     isFeatured: false,
     active: true,
+    createdAt: null,
+    updatedAt: null,
   },
   {
+    id: "logo_combi",
     title: "COMBİ M",
     subtitle: "Çözüm & İnovasyon",
     imageUrl: "/logos/combi.png",
@@ -116,150 +138,164 @@ export const DEFAULT_LOGOS: LogoInput[] = [
     order: 7,
     isFeatured: false,
     active: true,
+    createdAt: null,
+    updatedAt: null,
   },
 ];
 
-// ── Storage Keys & Event Names ─────────────────────────
-
-const LOCAL_STORAGE_KEY = "kehf_portal_logos_v3";
 const LOGOS_EVENT = "kehf_logos_updated";
 
-function getStoredLogos(): Logo[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.warn("Local storage parse error:", e);
-  }
-  return [];
-}
-
-function setStoredLogos(logos: Logo[]): void {
+function emitLogosUpdated(logos: Logo[]): void {
   if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(logos));
-    window.dispatchEvent(new CustomEvent(LOGOS_EVENT, { detail: logos }));
-  } catch (e) {
-    console.warn("Local storage write error:", e);
-  }
+  window.dispatchEvent(new CustomEvent<Logo[]>(LOGOS_EVENT, { detail: logos }));
 }
 
 // ── Read ───────────────────────────────────────────────
 
 export async function getLogos(): Promise<Logo[]> {
-  const local = getStoredLogos();
-  if (local.length > 0) return local;
-
-  const initial: Logo[] = DEFAULT_LOGOS.map((item, i) => ({
-    ...item,
-    id: `logo_${i + 1}`,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }));
-  setStoredLogos(initial);
-  return initial;
+  const res = await fetch("/api/logos", { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success || !Array.isArray(data.logos)) {
+    throw new Error(data.error || "Logolar yüklenemedi.");
+  }
+  return data.logos as Logo[];
 }
 
 export function subscribeToLogos(
   callback: (logos: Logo[]) => void,
   activeOnly = false
 ): () => void {
-  const update = () => {
-    let list = getStoredLogos();
-    if (list.length === 0) {
-      list = DEFAULT_LOGOS.map((item, i) => ({
-        ...item,
-        id: `logo_${i + 1}`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }));
-      setStoredLogos(list);
-    }
+  const deliver = (list: Logo[]) => {
     const filtered = activeOnly ? list.filter((l) => l.active) : list;
     const sorted = [...filtered].sort((a, b) => a.order - b.order);
     callback(sorted);
   };
 
-  // Initial call
-  update();
-
   if (typeof window === "undefined") return () => {};
 
-  const handleUpdate = () => update();
+  let active = true;
+
+  getLogos()
+    .then((logos) => {
+      if (active) deliver(logos);
+    })
+    .catch((err) => {
+      console.warn("Logo verileri sunucudan alınamadı:", err);
+    });
+
+  const handleUpdate = (e: Event) => {
+    const custom = e as CustomEvent<Logo[]>;
+    if (Array.isArray(custom.detail)) {
+      deliver(custom.detail);
+    } else {
+      getLogos()
+        .then((logos) => {
+          if (active) deliver(logos);
+        })
+        .catch(() => {});
+    }
+  };
+
   window.addEventListener(LOGOS_EVENT, handleUpdate);
-  window.addEventListener("storage", handleUpdate);
 
   return () => {
+    active = false;
     window.removeEventListener(LOGOS_EVENT, handleUpdate);
-    window.removeEventListener("storage", handleUpdate);
   };
 }
 
-// ── Write ──────────────────────────────────────────────
+// ── Write (Protected by server HttpOnly Admin Session) ─
 
 export async function createLogo(data: LogoInput): Promise<string> {
-  const newId = `logo_${Date.now()}`;
-  const now = new Date().toISOString();
-  const newLogo: Logo = {
-    ...data,
-    id: newId,
-    createdAt: now,
-    updatedAt: now,
-  };
+  const res = await fetch("/api/logos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ action: "create", data }),
+  });
 
-  const existing = getStoredLogos();
-  const updatedList = data.isFeatured
-    ? existing.map((l) => ({ ...l, isFeatured: false }))
-    : [...existing];
-  updatedList.push(newLogo);
-  setStoredLogos(updatedList);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || "Logo eklenemedi.");
+  }
 
-  return newId;
+  if (Array.isArray(json.logos)) {
+    emitLogosUpdated(json.logos);
+  }
+  return json.id as string;
 }
 
 export async function seedInitialLogos(): Promise<void> {
-  const initial: Logo[] = DEFAULT_LOGOS.map((item, i) => ({
-    ...item,
-    id: `logo_${i + 1}`,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }));
-  setStoredLogos(initial);
+  const res = await fetch("/api/logos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ action: "seed" }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || "Başlangıç logoları yüklenemedi.");
+  }
+
+  if (Array.isArray(json.logos)) {
+    emitLogosUpdated(json.logos);
+  }
 }
 
-export async function updateLogo(id: string, data: Partial<LogoInput>): Promise<void> {
-  const existing = getStoredLogos();
-  const now = new Date().toISOString();
-  const updatedList = existing.map((l) => {
-    if (l.id === id) {
-      return { ...l, ...data, updatedAt: now };
-    }
-    if (data.isFeatured && l.id !== id) {
-      return { ...l, isFeatured: false };
-    }
-    return l;
+export async function updateLogo(
+  id: string,
+  data: Partial<LogoInput>
+): Promise<void> {
+  const res = await fetch("/api/logos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ action: "update", id, data }),
   });
-  setStoredLogos(updatedList);
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || "Logo güncellenemedi.");
+  }
+
+  if (Array.isArray(json.logos)) {
+    emitLogosUpdated(json.logos);
+  }
 }
 
 export async function deleteLogo(id: string): Promise<void> {
-  const existing = getStoredLogos();
-  const filtered = existing.filter((l) => l.id !== id);
-  setStoredLogos(filtered);
+  const res = await fetch("/api/logos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ action: "delete", id }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || "Logo silinemedi.");
+  }
+
+  if (Array.isArray(json.logos)) {
+    emitLogosUpdated(json.logos);
+  }
 }
 
 export async function reorderLogos(orderedIds: string[]): Promise<void> {
-  const existing = getStoredLogos();
-  const map = new Map(existing.map((l) => [l.id, l]));
-  const now = new Date().toISOString();
-  const reordered: Logo[] = [];
-  
-  orderedIds.forEach((id, index) => {
-    const item = map.get(id);
-    if (item) {
-      reordered.push({ ...item, order: index, updatedAt: now });
-    }
+  const res = await fetch("/api/logos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ action: "reorder", orderedIds }),
   });
-  setStoredLogos(reordered);
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || "Logo sıralaması kaydedilemedi.");
+  }
+
+  if (Array.isArray(json.logos)) {
+    emitLogosUpdated(json.logos);
+  }
 }

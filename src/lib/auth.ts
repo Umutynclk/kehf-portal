@@ -1,4 +1,8 @@
-import { createHmac } from "crypto";
+import {
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+} from "firebase/auth";
+import { getFirebaseAuth, isFirebaseClientConfigured } from "./firebase/client";
 
 export interface AdminUser {
   uid: string;
@@ -7,113 +11,138 @@ export interface AdminUser {
   role: "admin";
 }
 
-const ADMIN_SECRET = process.env.ADMIN_SESSION_SECRET || "";
-const SESSION_STORAGE_KEY = "kehf_admin_session";
-const TOKEN_STORAGE_KEY = "kehf_admin_token";
-
-/**
- * Generate a cryptographically signed admin token (Server/Client compatible)
- */
-export function generateAdminToken(email: string): string {
-  const timestamp = Date.now();
-  const payload = `${email}:${timestamp}`;
-  const signature = createHmac("sha256", ADMIN_SECRET).update(payload).digest("hex");
-  return Buffer.from(`${payload}:${signature}`).toString("base64");
+function mapFirebaseAuthError(err: unknown): string {
+  const code = (err as { code?: string })?.code || "";
+  switch (code) {
+    case "auth/invalid-credential":
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+      return "E-posta veya şifre hatalı.";
+    case "auth/invalid-email":
+      return "Geçerli bir e-posta adresi girin.";
+    case "auth/too-many-requests":
+      return "Çok fazla başarısız deneme. Lütfen daha sonra tekrar deneyin.";
+    case "auth/user-disabled":
+      return "Bu hesap devre dışı bırakılmış.";
+    case "auth/network-request-failed":
+      return "Ağ bağlantısı hatası. İnternet bağlantınızı kontrol edin.";
+    default:
+      if (err instanceof Error && err.message) {
+        return err.message;
+      }
+      return "Giriş yapılamadı. Lütfen bilgilerinizi kontrol edin.";
+  }
 }
 
 /**
- * Verify an admin token on the server side
+ * Authenticate admin via Firebase Authentication Email/Password,
+ * exchange ID token for a server-verified HttpOnly session cookie.
  */
-export function verifyAdminToken(token: string | null | undefined): boolean {
-  if (!token) return false;
+export async function signIn(
+  email: string,
+  password: string
+): Promise<AdminUser> {
+  const trimmedEmail = (email || "").trim();
+  if (!trimmedEmail || !password) {
+    throw new Error("E-posta ve şifre zorunludur.");
+  }
 
+  if (!isFirebaseClientConfigured()) {
+    throw new Error(
+      "Firebase istemci yapılandırması eksik (NEXT_PUBLIC_FIREBASE_API_KEY)."
+    );
+  }
+
+  const auth = getFirebaseAuth();
+
+  let idToken: string;
   try {
-    const decoded = Buffer.from(token, "base64").toString("utf-8");
-    const parts = decoded.split(":");
-    if (parts.length < 3) return false;
-
-    const [email, timestampStr, signature] = parts;
-    const timestamp = parseInt(timestampStr, 10);
-
-    // Ensure timestamp is valid (within 30 days)
-    if (isNaN(timestamp) || Date.now() - timestamp > 30 * 24 * 60 * 60 * 1000) {
-      return false;
-    }
-
-    const expectedSignature = createHmac("sha256", ADMIN_SECRET)
-      .update(`${email}:${timestamp}`)
-      .digest("hex");
-
-    return signature === expectedSignature;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Client-side: Sign in with email and password
- */
-export async function signIn(email: string, password: string): Promise<AdminUser> {
-  const adminEmail = (email || "").trim().toLowerCase();
-  const validEmails = ["admin@kehf.com", "admin", "kehf"];
-
-  // Accept admin credentials (or configured ADMIN_PASSWORD)
-  const isValidEmail = validEmails.some((e) => adminEmail.includes(e)) || adminEmail.length > 3;
-  const isDefaultPassword = password === "admin123" || password === "kehf2026" || password === "admin";
-  const configuredPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
-
-  if (isValidEmail && (isDefaultPassword || (configuredPassword && password === configuredPassword) || password.length >= 4)) {
-    const user: AdminUser = {
-      uid: "kehf_admin_master",
-      email: adminEmail.includes("@") ? adminEmail : `${adminEmail}@kehf.com`,
-      displayName: "Kehf Admin",
-      role: "admin",
-    };
-
-    const token = generateAdminToken(user.email);
-
-    if (typeof window !== "undefined") {
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
-      localStorage.setItem(TOKEN_STORAGE_KEY, token);
-      document.cookie = `kehf_admin_token=${token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax`;
-    }
-
-    return user;
+    const credential = await signInWithEmailAndPassword(
+      auth,
+      trimmedEmail,
+      password
+    );
+    idToken = await credential.user.getIdToken(true);
+  } catch (err) {
+    throw new Error(mapFirebaseAuthError(err));
   }
 
-  throw new Error("Geçersiz e-posta veya şifre.");
-}
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ idToken }),
+  });
 
-/**
- * Client-side: Sign out the admin user
- */
-export async function signOut(): Promise<void> {
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || !data.success || !data.user) {
+    // Ensure client auth is signed out if server rejected admin access
+    await firebaseSignOut(auth).catch(() => {});
+    throw new Error(
+      data.error || "Bu hesabın admin paneline erişim yetkisi yok."
+    );
+  }
+
   if (typeof window !== "undefined") {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    document.cookie = "kehf_admin_token=; path=/; max-age=0";
     window.dispatchEvent(new Event("auth-changed"));
   }
+
+  return data.user as AdminUser;
 }
 
 /**
- * Client-side: Get currently stored admin token
+ * Fetch current authenticated admin session from server (HttpOnly cookie).
  */
-export function getStoredAdminToken(): string | null {
+export async function fetchAdminSession(): Promise<AdminUser | null> {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_STORAGE_KEY);
-}
 
-/**
- * Client-side: Get currently stored admin user
- */
-export function getStoredAdminUser(): AdminUser | null {
-  if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    const res = await fetch("/api/auth/session", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.authenticated && data.user) {
+      return data.user as AdminUser;
+    }
+    return null;
   } catch {
-    // ignore
+    return null;
   }
-  return null;
+}
+
+/**
+ * Sign out: clear server HttpOnly session cookie, revoke tokens, and sign out Firebase client.
+ */
+export async function signOut(): Promise<void> {
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
+    // Ignore network error during logout cleanup
+  }
+
+  try {
+    if (isFirebaseClientConfigured()) {
+      await firebaseSignOut(getFirebaseAuth());
+    }
+  } catch {
+    // Ignore client signOut errors
+  }
+
+  if (typeof window !== "undefined") {
+    // Clean up any legacy localStorage keys from previous versions
+    try {
+      localStorage.removeItem("kehf_admin_session");
+      localStorage.removeItem("kehf_admin_token");
+    } catch {
+      // ignore
+    }
+    window.dispatchEvent(new Event("auth-changed"));
+  }
 }

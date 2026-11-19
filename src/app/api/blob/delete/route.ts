@@ -1,27 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { del } from "@vercel/blob";
-import { verifyAdminToken } from "@/lib/auth";
+import { verifyAdminRequest } from "@/lib/firebase/session";
 
-// ── Helper to extract and verify admin token from request ────────
-function checkAdminAuth(request: NextRequest, bodyToken?: string | null): boolean {
-  // 1. From body
-  if (bodyToken && verifyAdminToken(bodyToken)) return true;
-
-  // 2. From Authorization header
-  const authHeader = request.headers.get("authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.substring(7);
-    if (verifyAdminToken(token)) return true;
-  }
-
-  // 3. From cookie
-  const cookieToken = request.cookies.get("kehf_admin_token")?.value;
-  if (cookieToken && verifyAdminToken(cookieToken)) return true;
-
-  return false;
-}
-
-// ── Only allow deletion of blobs under images/ prefix ─────────────
 function isAllowedPathname(url: string): boolean {
   try {
     const pathname = new URL(url).pathname;
@@ -31,25 +11,27 @@ function isAllowedPathname(url: string): boolean {
   }
 }
 
-// ── POST /api/blob/delete ─────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { url, adminToken } = body as { url?: string; adminToken?: string };
-
-    // 1. Admin auth check
-    const isAuthorized = checkAdminAuth(request, adminToken);
-    if (!isAuthorized) {
+    // 1. Strict server-side HttpOnly admin session check
+    const admin = await verifyAdminRequest(request);
+    if (!admin) {
       return NextResponse.json(
-        { error: "Yetkisiz erişim: admin kimlik doğrulaması gerekli." },
+        {
+          success: false,
+          error: "Yetkisiz erişim: admin kimlik doğrulaması gerekli.",
+        },
         { status: 401 }
       );
     }
 
+    const body = await request.json().catch(() => null);
+    const url = typeof body?.url === "string" ? body.url.trim() : "";
+
     // 2. URL presence check
     if (!url) {
       return NextResponse.json(
-        { error: "Silinecek Blob URL belirtilmedi." },
+        { success: false, error: "Silinecek Blob URL belirtilmedi." },
         { status: 400 }
       );
     }
@@ -57,18 +39,31 @@ export async function POST(request: NextRequest) {
     // 3. Pathname safety check — prevent arbitrary blob deletion
     if (!isAllowedPathname(url)) {
       return NextResponse.json(
-        { error: "Bu blob pathname'i silme yetkiniz yok." },
+        { success: false, error: "Bu blob pathname'i silme yetkiniz yok." },
         { status: 403 }
       );
     }
 
     // 4. Delete from Vercel Blob
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
     const oidcToken = process.env.VERCEL_OIDC_TOKEN;
     const storeId = process.env.BLOB_STORE_ID;
 
-    const delOptions: Parameters<typeof del>[1] = {};
+    if (!blobToken && !(oidcToken && storeId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Vercel Blob yapılandırması eksik (BLOB_READ_WRITE_TOKEN tanımlı değil).",
+        },
+        { status: 503 }
+      );
+    }
 
-    if (oidcToken && storeId) {
+    const delOptions: Parameters<typeof del>[1] = {};
+    if (blobToken) {
+      (delOptions as Record<string, unknown>).token = blobToken;
+    } else if (oidcToken && storeId) {
       (delOptions as Record<string, unknown>).token = oidcToken;
       (delOptions as Record<string, unknown>).storeId = storeId;
     }
@@ -81,7 +76,10 @@ export async function POST(request: NextRequest) {
       error instanceof Error ? error.message : "Bilinmeyen hata";
     console.error("Blob delete error:", error);
     return NextResponse.json(
-      { error: `Fotoğraf silinirken bir hata oluştu: ${message}` },
+      {
+        success: false,
+        error: `Görsel Vercel Blob'dan silinemedi: ${message}`,
+      },
       { status: 500 }
     );
   }

@@ -11,7 +11,7 @@ export interface PortalSettings {
   updatedAt: string | null;
 }
 
-const DEFAULTS: PortalSettings = {
+export const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
   siteTitle: "Premium Logo Portal",
   siteDescription: "Markalarımız ve iş ortaklarımız",
   backgroundType: "gradient",
@@ -22,67 +22,83 @@ const DEFAULTS: PortalSettings = {
   updatedAt: null,
 };
 
-const LOCAL_STORAGE_KEY = "kehf_portal_settings_v3";
 const SETTINGS_EVENT = "kehf_settings_updated";
 
-function getStoredSettings(): PortalSettings {
-  if (typeof window === "undefined") return DEFAULTS;
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
-  } catch (e) {
-    console.warn("Portal settings parse error:", e);
-  }
-  return DEFAULTS;
-}
-
-function setStoredSettings(settings: PortalSettings): void {
+function emitSettingsUpdated(settings: PortalSettings): void {
   if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
-    window.dispatchEvent(new CustomEvent(SETTINGS_EVENT, { detail: settings }));
-  } catch (e) {
-    console.warn("Portal settings write error:", e);
-  }
+  window.dispatchEvent(
+    new CustomEvent<PortalSettings>(SETTINGS_EVENT, { detail: settings })
+  );
 }
 
 // ── Read ───────────────────────────────────────────────
 
-/** Fetch portal settings (one-time read). */
+/** Fetch portal settings from server (Firestore). */
 export async function getPortalSettings(): Promise<PortalSettings> {
-  return getStoredSettings();
+  const res = await fetch("/api/portal-settings", { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success || !data.settings) {
+    throw new Error(data.error || "Portal ayarları yüklenemedi.");
+  }
+  return data.settings as PortalSettings;
 }
 
-/** Realtime listener for portal settings. Returns unsubscribe fn. */
+/** Listener for portal settings. Fetches fresh from Firestore and reacts to updates. */
 export function subscribeToPortalSettings(
   callback: (settings: PortalSettings) => void
 ): () => void {
-  const update = () => callback(getStoredSettings());
-  update();
-
   if (typeof window === "undefined") return () => {};
 
-  const handleUpdate = () => update();
+  let active = true;
+
+  getPortalSettings()
+    .then((settings) => {
+      if (active) callback(settings);
+    })
+    .catch((err) => {
+      console.warn("Portal ayarları sunucudan alınamadı:", err);
+      if (active) callback(DEFAULT_PORTAL_SETTINGS);
+    });
+
+  const handleUpdate = (e: Event) => {
+    const custom = e as CustomEvent<PortalSettings>;
+    if (custom.detail) {
+      callback(custom.detail);
+    } else {
+      getPortalSettings()
+        .then((settings) => {
+          if (active) callback(settings);
+        })
+        .catch(() => {});
+    }
+  };
+
   window.addEventListener(SETTINGS_EVENT, handleUpdate);
-  window.addEventListener("storage", handleUpdate);
 
   return () => {
+    active = false;
     window.removeEventListener(SETTINGS_EVENT, handleUpdate);
-    window.removeEventListener("storage", handleUpdate);
   };
 }
 
-// ── Write ──────────────────────────────────────────────
+// ── Write (Protected by server HttpOnly Admin Session) ─
 
-/** Update portal settings (merge). */
+/** Update portal settings in Firestore (merge). */
 export async function updatePortalSettings(
   data: Partial<Omit<PortalSettings, "updatedAt">>
-): Promise<void> {
-  const current = getStoredSettings();
-  const updated: PortalSettings = {
-    ...current,
-    ...data,
-    updatedAt: new Date().toISOString(),
-  };
-  setStoredSettings(updated);
+): Promise<PortalSettings> {
+  const res = await fetch("/api/portal-settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success || !json.settings) {
+    throw new Error(json.error || "Portal ayarları kaydedilemedi.");
+  }
+
+  emitSettingsUpdated(json.settings as PortalSettings);
+  return json.settings as PortalSettings;
 }

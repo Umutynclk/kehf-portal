@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, useEffect, useRef } from "react";
+import { useState, FormEvent, useRef } from "react";
 import { Logo, LogoInput } from "@/lib/logos";
 import { uploadBlobImage, deleteBlobImage, isBlobUrl } from "@/lib/blob/upload";
 
@@ -49,13 +49,11 @@ export default function LogoEditor({
   const [imageUrl, setImageUrl] = useState(logo?.imageUrl ?? "");
   const [targetUrl, setTargetUrl] = useState(logo?.targetUrl ?? "");
   const [displayUrl, setDisplayUrl] = useState(logo?.displayUrl ?? "");
-  const [targetType, setTargetType] = useState<"internal" | "external">(
-    logo?.targetType ?? "external"
-  );
+  const targetType: "internal" | "external" = logo?.targetType ?? "external";
   const [openInNewTab, setOpenInNewTab] = useState(logo?.openInNewTab ?? true);
   const [isFeatured, setIsFeatured] = useState(logo?.isFeatured ?? false);
   const [active, setActive] = useState(logo?.active ?? true);
-  const [order, setOrder] = useState(logo?.order ?? nextOrder);
+  const order = logo?.order ?? nextOrder;
 
   const [formError, setFormError] = useState("");
   const [urlError, setUrlError] = useState("");
@@ -66,12 +64,6 @@ export default function LogoEditor({
   const [newlyUploadedBlobUrl, setNewlyUploadedBlobUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!displayUrl && targetUrl) {
-      setDisplayUrl(targetUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""));
-    }
-  }, [targetUrl, displayUrl]);
 
   // Handle safe cancel/close: Clean up any uncommitted newly uploaded blob
   const handleCancel = () => {
@@ -197,7 +189,7 @@ export default function LogoEditor({
       // Reset session tracking and close modal
       setNewlyUploadedBlobUrl(null);
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Save error:", error);
 
       // 7. If new upload succeeded but database update failed, delete the newly created Blob to prevent orphans
@@ -213,7 +205,9 @@ export default function LogoEditor({
         setNewlyUploadedBlobUrl(null);
       }
 
-      setFormError(error?.message || "Kaydederken bir hata oluştu.");
+      setFormError(
+        error instanceof Error ? error.message : "Kaydederken bir hata oluştu."
+      );
     } finally {
       setSaving(false);
     }

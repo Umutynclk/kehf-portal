@@ -16,15 +16,8 @@ import { deleteBlobImage, isBlobUrl } from "@/lib/blob/upload";
 import LogoEditor from "@/components/admin/LogoEditor";
 import BackgroundSettings from "@/components/admin/BackgroundSettings";
 
-const INITIAL_LOGOS: Logo[] = DEFAULT_LOGOS.map((item, i) => ({
-  ...item,
-  id: `default_${i}`,
-  createdAt: null,
-  updatedAt: null,
-}));
-
 export default function AdminLogolarPage() {
-  const [logos, setLogos] = useState<Logo[]>(INITIAL_LOGOS);
+  const [logos, setLogos] = useState<Logo[]>(DEFAULT_LOGOS);
   const [loading, setLoading] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingLogo, setEditingLogo] = useState<Logo | null>(null);
@@ -52,33 +45,29 @@ export default function AdminLogolarPage() {
   // ── Handlers ──
 
   const handleCreate = useCallback(async (data: LogoInput) => {
-    const tempId = `temp_${Date.now()}`;
-    const newLogo: Logo = {
-      ...data,
-      id: tempId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setLogos((prev) => [...prev, newLogo]);
-    showStatus("✅ Yeni logo eklendi");
+    showStatus("⏳ Logo ekleniyor...");
     try {
       await createLogo(data);
+      showStatus("✅ Yeni logo Firestore'a kaydedildi");
     } catch (e) {
-      console.warn("Create fallback:", e);
+      const msg = e instanceof Error ? e.message : "Logo eklenemedi";
+      showStatus(`❌ ${msg}`);
+      throw e;
     }
   }, []);
 
   const handleUpdate = useCallback(
     async (data: LogoInput) => {
       if (!editingLogo) return;
-      setLogos((prev) =>
-        prev.map((l) => (l.id === editingLogo.id ? { ...l, ...data } : l))
-      );
-      showStatus("✅ Logo güncellendi");
+      const targetId = editingLogo.id;
+      showStatus("⏳ Kaydediliyor...");
       try {
-        await updateLogo(editingLogo.id, data);
+        await updateLogo(targetId, data);
+        showStatus("✅ Logo güncellendi");
       } catch (e) {
-        console.warn("Update fallback:", e);
+        const msg = e instanceof Error ? e.message : "Logo güncellenemedi";
+        showStatus(`❌ ${msg}`);
+        throw e;
       }
     },
     [editingLogo]
@@ -86,19 +75,22 @@ export default function AdminLogolarPage() {
 
   const handleDelete = useCallback(
     async (id: string) => {
+      const prevLogos = logos;
       const targetLogo = logos.find((l) => l.id === id);
       setLogos((prev) => prev.filter((l) => l.id !== id));
       setDeleteConfirm(null);
-      showStatus("🗑️ Logo silindi");
       try {
         await deleteLogo(id);
+        showStatus("🗑️ Logo silindi");
         if (targetLogo?.imageUrl && isBlobUrl(targetLogo.imageUrl)) {
           deleteBlobImage(targetLogo.imageUrl).catch((err) => {
             console.warn("Logo Blob silme hatası (kayıt silindi):", err);
           });
         }
       } catch (e) {
-        console.warn("Delete fallback:", e);
+        setLogos(prevLogos);
+        const msg = e instanceof Error ? e.message : "Logo silinemedi";
+        showStatus(`❌ ${msg}`);
       }
     },
     [logos]
@@ -112,32 +104,45 @@ export default function AdminLogolarPage() {
     try {
       await updateLogo(logo.id, { active: newStatus });
     } catch (e) {
-      console.warn("Toggle active fallback:", e);
+      setLogos((prev) =>
+        prev.map((l) => (l.id === logo.id ? { ...l, active: logo.active } : l))
+      );
+      const msg = e instanceof Error ? e.message : "Durum güncellenemedi";
+      showStatus(`❌ ${msg}`);
     }
   }, []);
 
-  const handleToggleFeatured = useCallback(async (logo: Logo) => {
-    const newStatus = !logo.isFeatured;
-    setLogos((prev) =>
-      prev.map((l) =>
-        l.id === logo.id
-          ? { ...l, isFeatured: newStatus }
-          : newStatus
-          ? { ...l, isFeatured: false } // Only 1 logo featured at a time
-          : l
-      )
-    );
-    showStatus(newStatus ? "⭐ Ana Büyük Logo yapıldı" : "⭐ Logo normale çevrildi");
-    try {
-      await updateLogo(logo.id, { isFeatured: newStatus });
-    } catch (e) {
-      console.warn("Toggle featured fallback:", e);
-    }
-  }, []);
+  const handleToggleFeatured = useCallback(
+    async (logo: Logo) => {
+      const prevLogos = logos;
+      const newStatus = !logo.isFeatured;
+      setLogos((prev) =>
+        prev.map((l) =>
+          l.id === logo.id
+            ? { ...l, isFeatured: newStatus }
+            : newStatus
+            ? { ...l, isFeatured: false }
+            : l
+        )
+      );
+      try {
+        await updateLogo(logo.id, { isFeatured: newStatus });
+        showStatus(
+          newStatus ? "⭐ Ana Büyük Logo yapıldı" : "⭐ Logo normale çevrildi"
+        );
+      } catch (e) {
+        setLogos(prevLogos);
+        const msg = e instanceof Error ? e.message : "Öne çıkan güncellenemedi";
+        showStatus(`❌ ${msg}`);
+      }
+    },
+    [logos]
+  );
 
   const handleMoveUp = useCallback(
     async (index: number) => {
       if (index <= 0) return;
+      const prevLogos = logos;
       const newLogos = [...logos];
       [newLogos[index - 1], newLogos[index]] = [newLogos[index], newLogos[index - 1]];
       setLogos(newLogos);
@@ -145,7 +150,9 @@ export default function AdminLogolarPage() {
         const ids = newLogos.map((l) => l.id);
         await reorderLogos(ids);
       } catch (e) {
-        console.warn("Reorder fallback:", e);
+        setLogos(prevLogos);
+        const msg = e instanceof Error ? e.message : "Sıralama kaydedilemedi";
+        showStatus(`❌ ${msg}`);
       }
     },
     [logos]
@@ -154,6 +161,7 @@ export default function AdminLogolarPage() {
   const handleMoveDown = useCallback(
     async (index: number) => {
       if (index >= logos.length - 1) return;
+      const prevLogos = logos;
       const newLogos = [...logos];
       [newLogos[index], newLogos[index + 1]] = [newLogos[index + 1], newLogos[index]];
       setLogos(newLogos);
@@ -161,7 +169,9 @@ export default function AdminLogolarPage() {
         const ids = newLogos.map((l) => l.id);
         await reorderLogos(ids);
       } catch (e) {
-        console.warn("Reorder fallback:", e);
+        setLogos(prevLogos);
+        const msg = e instanceof Error ? e.message : "Sıralama kaydedilemedi";
+        showStatus(`❌ ${msg}`);
       }
     },
     [logos]
@@ -171,10 +181,11 @@ export default function AdminLogolarPage() {
     setSeeding(true);
     try {
       await seedInitialLogos();
-      showStatus("⚡ 6 Örnek logo yüklendi");
+      showStatus("⚡ Başlangıç logoları yüklendi");
     } catch (e) {
       console.error("Seed error:", e);
-      showStatus("⚡ Örnek logolar hazırlandı");
+      const msg = e instanceof Error ? e.message : "Logolar yüklenemedi";
+      showStatus(`❌ ${msg}`);
     } finally {
       setSeeding(false);
     }

@@ -3,31 +3,50 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Logo, subscribeToLogos, DEFAULT_LOGOS } from "@/lib/logos";
+import {
+  PortalSettings,
+  DEFAULT_PORTAL_SETTINGS,
+  subscribeToPortalSettings,
+} from "@/lib/portal";
 import { initAnalytics } from "@/lib/analytics";
 import LogoCard from "./LogoCard";
 
-const INITIAL_LOGOS: Logo[] = DEFAULT_LOGOS.map((item, i) => ({
-  ...item,
-  id: `default_${i}`,
-  createdAt: null,
-  updatedAt: null,
-}));
+interface BrandPortalProps {
+  initialLogos?: Logo[];
+  initialSettings?: PortalSettings;
+}
 
-export default function BrandPortal() {
-  const [logos, setLogos] = useState<Logo[]>(INITIAL_LOGOS);
+export default function BrandPortal({
+  initialLogos,
+  initialSettings,
+}: BrandPortalProps) {
+  const [logos, setLogos] = useState<Logo[]>(
+    initialLogos && initialLogos.length > 0 ? initialLogos : DEFAULT_LOGOS
+  );
+  const [settings, setSettings] = useState<PortalSettings>(
+    initialSettings || DEFAULT_PORTAL_SETTINGS
+  );
 
   // Initialize analytics safely
   useEffect(() => {
     initAnalytics();
   }, []);
 
-  // Subscribe to live logos (updates state from localStorage or Firestore)
+  // Subscribe to live logos from Firestore API
   useEffect(() => {
     const unsub = subscribeToLogos((data) => {
       if (data && data.length > 0) {
         setLogos(data);
       }
     }, true);
+    return unsub;
+  }, []);
+
+  // Subscribe to live portal settings from Firestore API
+  useEffect(() => {
+    const unsub = subscribeToPortalSettings((s) => {
+      if (s) setSettings(s);
+    });
     return unsub;
   }, []);
 
@@ -40,13 +59,13 @@ export default function BrandPortal() {
     : logos.slice(1);
 
   // Layout splitting:
-  // Default matching image: 3 logos in Top Row (VOKS, KALİPORT, KUTEMS) + 4 logos in Bottom Row (SMYLE, GÜLÜMSE, SONRAKAM, COMBİ M)
+  // Default matching image: 3 logos in Top Row + remaining in Bottom Row
   let topRowLogos: Logo[] = [];
   let bottomRowLogos: Logo[] = [];
 
   if (secondaryLogos.length >= 7) {
     topRowLogos = secondaryLogos.slice(0, 3);
-    bottomRowLogos = secondaryLogos.slice(3, 7);
+    bottomRowLogos = secondaryLogos.slice(3);
   } else if (secondaryLogos.length === 6) {
     topRowLogos = secondaryLogos.slice(0, 3);
     bottomRowLogos = secondaryLogos.slice(3, 6);
@@ -59,15 +78,44 @@ export default function BrandPortal() {
   }
 
   // Animation timing calculation
-  const STAGGER_INTERVAL = 70;
-  const BASE_DELAY = 40;
-  const featuredDelay = BASE_DELAY + secondaryLogos.length * STAGGER_INTERVAL + 100;
+  const animMultiplier =
+    settings.animationIntensity === "none"
+      ? 0
+      : settings.animationIntensity === "low"
+      ? 0.5
+      : settings.animationIntensity === "high"
+      ? 1.4
+      : 1;
+  const STAGGER_INTERVAL = Math.round(70 * animMultiplier);
+  const BASE_DELAY = Math.round(40 * animMultiplier);
+  const featuredDelay =
+    animMultiplier === 0
+      ? 0
+      : BASE_DELAY + secondaryLogos.length * STAGGER_INTERVAL + 100;
 
   return (
     <div className="relative min-h-screen w-full bg-[#000000] text-white flex flex-col justify-between items-center px-4 sm:px-8 md:px-12 py-8 sm:py-14 selection:bg-amber-500/30 selection:text-white overflow-x-hidden">
+      {/* Optional Background Image Layer */}
+      {settings.backgroundType === "image" && settings.backgroundImageUrl && (
+        <>
+          <div
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none"
+            style={{ backgroundImage: `url(${settings.backgroundImageUrl})` }}
+          />
+          <div
+            className="absolute inset-0 bg-black pointer-events-none"
+            style={{ opacity: settings.backgroundOverlay }}
+          />
+        </>
+      )}
+
       {/* Ambient background glows */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[350px] bg-amber-600/[0.04] blur-[160px] pointer-events-none rounded-full" />
-      <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 translate-y-1/2 w-[600px] h-[300px] bg-blue-900/[0.03] blur-[150px] pointer-events-none rounded-full" />
+      {settings.backgroundType !== "solid" && (
+        <>
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[350px] bg-amber-600/[0.04] blur-[160px] pointer-events-none rounded-full" />
+          <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 translate-y-1/2 w-[600px] h-[300px] bg-blue-900/[0.03] blur-[150px] pointer-events-none rounded-full" />
+        </>
+      )}
 
       {/* Main Content Container */}
       <div className="relative z-10 w-full max-w-[1240px] mx-auto flex flex-col items-center justify-center my-auto space-y-6 sm:space-y-8">

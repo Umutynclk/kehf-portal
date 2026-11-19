@@ -5,27 +5,26 @@ import {
   useContext,
   useEffect,
   useState,
+  useCallback,
   ReactNode,
 } from "react";
 import {
   AdminUser,
-  getStoredAdminUser,
-  getStoredAdminToken,
-  generateAdminToken,
+  fetchAdminSession,
   signOut as authSignOut,
 } from "@/lib/auth";
 
 interface AuthContextValue {
   user: AdminUser | null;
   loading: boolean;
-  loginAsAdmin: (email?: string) => void;
+  refreshSession: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
-  loginAsAdmin: () => {},
+  refreshSession: async () => {},
   logout: async () => {},
 });
 
@@ -33,62 +32,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Check saved session & token
-    const savedUser = getStoredAdminUser();
-    const savedToken = getStoredAdminToken();
-
-    if (savedUser && savedToken) {
-      setUser(savedUser);
+  const refreshSession = useCallback(async () => {
+    try {
+      const sessionUser = await fetchAdminSession();
+      setUser(sessionUser);
+    } catch {
+      setUser(null);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  }, []);
 
-    const handleAuthChange = () => {
-      const u = getStoredAdminUser();
-      const t = getStoredAdminToken();
-      if (u && t) {
-        setUser(u);
-      } else {
-        setUser(null);
+  useEffect(() => {
+    let active = true;
+
+    const loadSession = async () => {
+      try {
+        const sessionUser = await fetchAdminSession();
+        if (active) setUser(sessionUser);
+      } catch {
+        if (active) setUser(null);
+      } finally {
+        if (active) setLoading(false);
       }
     };
 
-    window.addEventListener("auth-changed", handleAuthChange);
-    window.addEventListener("storage", handleAuthChange);
+    void loadSession();
 
+    const handleAuthChange = () => {
+      void loadSession();
+    };
+
+    window.addEventListener("auth-changed", handleAuthChange);
     return () => {
+      active = false;
       window.removeEventListener("auth-changed", handleAuthChange);
-      window.removeEventListener("storage", handleAuthChange);
     };
   }, []);
 
-  const loginAsAdmin = (email = "admin@kehf.com") => {
-    const adminUser: AdminUser = {
-      uid: "kehf_admin_master",
-      email: email,
-      displayName: "Kehf Admin",
-      role: "admin",
-    };
-
-    const token = generateAdminToken(adminUser.email);
-
-    if (typeof window !== "undefined") {
-      localStorage.setItem("kehf_admin_session", JSON.stringify(adminUser));
-      localStorage.setItem("kehf_admin_token", token);
-      document.cookie = `kehf_admin_token=${token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax`;
-      window.dispatchEvent(new Event("auth-changed"));
-    }
-
-    setUser(adminUser);
-  };
-
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await authSignOut();
     setUser(null);
-  };
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginAsAdmin, logout }}>
+    <AuthContext.Provider value={{ user, loading, refreshSession, logout }}>
       {children}
     </AuthContext.Provider>
   );
