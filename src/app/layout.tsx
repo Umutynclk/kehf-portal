@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     "KEHF Group ve grup bünyesindeki markaların resmi kurumsal portalı.",
   applicationName: "KEHF Group",
   authors: [{ name: "KEHF Group" }],
-  creator: "Umut Yoncalık",
+  creator: "umutynclk",
   publisher: "KEHF Group",
   openGraph: {
     type: "website",
@@ -55,10 +55,42 @@ export const metadata: Metadata = {
   },
 };
 
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "KEHF Group",
+  url: process.env.NEXT_PUBLIC_SITE_URL || "https://kehf.com.tr",
+  logo: `${process.env.NEXT_PUBLIC_SITE_URL || "https://kehf.com.tr"}/logos/kehf.png`,
+  email: "info@kehfgroup.tr",
+  telephone: "+903324212421",
+  contactPoint: [
+    {
+      "@type": "ContactPoint",
+      telephone: "+903324212421",
+      email: "info@kehfgroup.tr",
+      contactType: "customer service",
+      availableLanguage: ["Turkish"],
+    },
+    {
+      "@type": "ContactPoint",
+      telephone: "+905321549277",
+      contactType: "customer service",
+      url: "https://wa.me/905321549277",
+      availableLanguage: ["Turkish"],
+    },
+  ],
+};
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="tr" className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-screen flex flex-col font-sans bg-[#000000] text-white">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(organizationJsonLd),
+          }}
+        />
         <div className="flex-1 flex flex-col">{children}</div>
         <SiteFooter />
       </body>
